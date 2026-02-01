@@ -1,14 +1,14 @@
 // --- シュレッダー画面 ---
 import 'dart:math' as math;
-
 import 'package:audioplayers/audioplayers.dart';
+import '../models/task.dart';
 import 'package:flutter/material.dart';
 import 'package:to_do/models/particle.dart';
 import 'package:to_do/widgets/shredder_painter.dart';
 
 class ShredderPage extends StatefulWidget {
-  final String taskText;
-  const ShredderPage({super.key, required this.taskText});
+  final Task task; //StringではなくTask型に変更
+  const ShredderPage({super.key, required this.task});
 
   @override
   State<ShredderPage> createState() => _ShredderPageState();
@@ -106,13 +106,16 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
                 return Transform.translate(offset: Offset(0, slideDown), child: child);
               },
               child: Hero(
-                tag: 'task_${widget.taskText}',
+                tag: 'task_${widget.task.id}',
                 child: Material(
                   elevation: 10,
                   child: Container(
                     width: 300, height: 400, color: Colors.white,
                     padding: const EdgeInsets.all(24),
-                    child: Text(widget.taskText, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black)),
+                    child: Text(
+                      widget.task.title, // widget.task.title を表示
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black)
+                    ),
                   ),
                 ),
               ),
