@@ -10,31 +10,36 @@ class TodoListPage extends StatefulWidget {
   @override
   State<TodoListPage> createState() => _TodoListPageState();
 }
-
 class _TodoListPageState extends State<TodoListPage> {
-  // String のリストから Task のリストに変更
+  // --- 1. 変数の宣言は1回だけ ---
   List<Task> _tasks = [];
+  TaskPriority? _selectedFilter; 
   final TextEditingController _textFieldController = TextEditingController();
+
+  // --- 2. ゲッターを正しく閉じる ---
+  List<Task> get _filteredTasks {
+    if (_selectedFilter == null) {
+      return _tasks;
+    }
+    return _tasks.where((task) => task.priority == _selectedFilter).toList();
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadTasks(); // 起動時にデータを読み込む
+    _loadTasks();
   }
 
-  // データの読み込み
-  // --- 読み込みの修正 ---
+  // --- データの読み込み・保存・追加 ---
   Future<void> _loadTasks() async {
     final prefs = await SharedPreferences.getInstance();
     final List<String>? taskStringList = prefs.getStringList('tasks');
     
     if (taskStringList != null) {
       setState(() {
-        // 文字列(JSON)のリストを Task オブジェクトのリストに変換
         _tasks = taskStringList.map((item) => Task.fromJson(item)).toList();
       });
     } else {
-      // 初期データも Task オブジェクトで作る
       setState(() {
         _tasks = [
           Task(id: '1', title: 'ブログ記事を書く', dueDate: DateTime.now()),
@@ -43,16 +48,13 @@ class _TodoListPageState extends State<TodoListPage> {
       });
     }
   }
-  // データの保存
-  // --- 保存の修正 ---
+
   Future<void> _saveTasks() async {
     final prefs = await SharedPreferences.getInstance();
-    // Task オブジェクトを JSON 文字列に変換してリスト化
     final List<String> taskStringList = _tasks.map((task) => task.toJson()).toList();
     await prefs.setStringList('tasks', taskStringList);
   }
 
-  // 引数に日付と優先度を追加
   void _addTask(DateTime dueDate, TaskPriority priority) {
     if (_textFieldController.text.isNotEmpty) {
       setState(() {
@@ -66,24 +68,31 @@ class _TodoListPageState extends State<TodoListPage> {
       });
       _saveTasks();
       _textFieldController.clear();
-      Navigator.pop(context); // ダイアログを閉じる
+      Navigator.pop(context);
     }
   }
-
+  Color _getPriorityColor(TaskPriority priority) {
+    switch (priority) {
+      case TaskPriority.high:
+        return Colors.redAccent;
+      case TaskPriority.medium:
+        return Colors.orangeAccent;
+      case TaskPriority.low:
+        return Colors.blueAccent;
+    }
+  }
   void _showAddTaskDialog() {
-    // ダイアログ内での一時的な状態
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
     TaskPriority selectedPriority = TaskPriority.medium;
 
     showDialog(
       context: context,
       builder: (context) {
-        // StatefulBuilder を使うとダイアログ内で「再描画」ができるようになります
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('新しいタスクを追加'),
-              content: SingleChildScrollView( // 画面からはみ出さないように
+              content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -93,8 +102,6 @@ class _TodoListPageState extends State<TodoListPage> {
                       decoration: const InputDecoration(labelText: "タスク名"),
                     ),
                     const SizedBox(height: 20),
-                    
-                    // --- 期限の選択 ---
                     ListTile(
                       title: const Text("期限"),
                       subtitle: Text("${selectedDate.year}/${selectedDate.month}/${selectedDate.day}"),
@@ -107,13 +114,10 @@ class _TodoListPageState extends State<TodoListPage> {
                           lastDate: DateTime.now().add(const Duration(days: 365)),
                         );
                         if (picked != null) {
-                          // ダイアログ内の表示を更新
                           setDialogState(() => selectedDate = picked);
                         }
                       },
                     ),
-
-                    // --- 優先度の選択 ---
                     ListTile(
                       title: const Text("優先度"),
                       trailing: DropdownButton<TaskPriority>(
@@ -137,14 +141,14 @@ class _TodoListPageState extends State<TodoListPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    _textFieldController.clear();
+                    Navigator.pop(context);
+                  },
                   child: const Text('キャンセル'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    // 追加ボタンを押した時に、選択した値を渡してタスク作成
-                    _addTask(selectedDate, selectedPriority);
-                  },
+                  onPressed: () => _addTask(selectedDate, selectedPriority),
                   child: const Text('追加'),
                 ),
               ],
@@ -155,23 +159,21 @@ class _TodoListPageState extends State<TodoListPage> {
     );
   }
 
-  // 画面遷移の指示だけを行う
-  // --- 遷移の修正 ---
-  void _navigateToShredder(int index) async {
-    final selectedTask = _tasks[index];
-
+  // --- 3. 削除処理をしっかりメソッドの中に含める ---
+  void _navigateToShredder(Task task) async {
     await Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => 
-            ShredderPage(task: selectedTask), // taskText ではなく task を渡す！
+            ShredderPage(task: task), 
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
       ),
     );
 
+    // 画面から戻ってきたらここで削除
     setState(() {
-      _tasks.removeAt(index);
+      _tasks.removeWhere((t) => t.id == task.id);
     });
     _saveTasks();
   }
@@ -185,20 +187,97 @@ class _TodoListPageState extends State<TodoListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('シュレッダー ToDo')),
+      appBar: AppBar(
+        title: const Text('シュレッダー ToDo'),
+        actions: [
+          PopupMenuButton<TaskPriority?>(
+            icon: const Icon(Icons.filter_list),
+            onSelected: (TaskPriority? priority) {
+              setState(() {
+                _selectedFilter = priority;
+              });
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: null, child: Text("すべて表示")),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: TaskPriority.high, child: Text("優先度：高")),
+              const PopupMenuItem(value: TaskPriority.medium, child: Text("優先度：中")),
+              const PopupMenuItem(value: TaskPriority.low, child: Text("優先度：低")),
+            ],
+          ),
+        ],
+      ),
       body: ListView.builder(
-        itemCount: _tasks.length,
+        itemCount: _filteredTasks.length,
         itemBuilder: (context, index) {
-          final task = _tasks[index];
+          final task = _filteredTasks[index];
+          final color = _getPriorityColor(task.priority);
+
+          // --- 期限の判定ロジック ---
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final taskDate = DateTime(task.dueDate.year, task.dueDate.month, task.dueDate.day);
+
+          // 期限が今日より前か？（期限切れ）
+          final bool isOverdue = taskDate.isBefore(today);
+          // 期限が今日か？
+          final bool isToday = taskDate.isAtSameMomentAs(today);
+
+          // 文字の色と太さを決定
+          TextStyle dateTextStyle = TextStyle(
+            fontSize: 12,
+            fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+            color: isOverdue 
+                ? Colors.red          // 期限切れは「赤」
+                : (isToday ? Colors.orange : Colors.grey[600]), // 今日は「オレンジ」、未来は「グレー」
+          );
+
           return Hero(
-            tag: 'task_${task.id}', // ID を使うことで重複エラーを防ぐ！
+            tag: 'task_${task.id}',
             child: Card(
+              // 期限切れの場合は、カード自体の背景を少し赤らめる演出も可能です
+              color: isOverdue ? Colors.red[50] : Colors.white,
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ListTile(
-                title: Text(task.title), // .title を指定して表示
-                subtitle: Text('期限: ${task.dueDate.year}/${task.dueDate.month}/${task.dueDate.day}'), // 期限を表示
-                trailing: const Icon(Icons.check_circle_outline),
-                onTap: () => _navigateToShredder(index),
+              clipBehavior: Clip.antiAlias,
+              child: IntrinsicHeight(
+                child: Row(
+                  children: [
+                    Container(width: 6, color: color),
+                    Expanded(
+                      child: ListTile(
+                        title: Text(
+                          task.title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            // 期限切れならタイトルも少し目立たせる
+                            color: isOverdue ? Colors.red[900] : Colors.black,
+                          ),
+                        ),
+                        subtitle: Row(
+                          children: [
+                            Icon(
+                              isOverdue ? Icons.warning : Icons.event, 
+                              size: 14, 
+                              color: dateTextStyle.color
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${task.dueDate.year}/${task.dueDate.month}/${task.dueDate.day}',
+                              style: dateTextStyle, // ここで判定したスタイルを適用
+                            ),
+                            if (isOverdue) // 期限切れなら警告ラベルを表示
+                              const Padding(
+                                padding: EdgeInsets.only(left: 8.0),
+                                child: Text('期限切れ！', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
+                              ),
+                          ],
+                        ),
+                        trailing: Icon(Icons.check_circle_outline, color: color),
+                        onTap: () => _navigateToShredder(task),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
