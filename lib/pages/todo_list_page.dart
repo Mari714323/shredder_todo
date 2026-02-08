@@ -1,8 +1,7 @@
-// --- リスト画面 ---
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
-import 'package:to_do/pages/shredder_page.dart';
+import 'shredder_page.dart';
 
 class TodoListPage extends StatefulWidget {
   const TodoListPage({super.key});
@@ -10,17 +9,15 @@ class TodoListPage extends StatefulWidget {
   @override
   State<TodoListPage> createState() => _TodoListPageState();
 }
+
 class _TodoListPageState extends State<TodoListPage> {
-  // --- 1. 変数の宣言は1回だけ ---
   List<Task> _tasks = [];
-  TaskPriority? _selectedFilter; 
+  TaskPriority? _selectedFilter; // 【復活】フィルタ用変数
   final TextEditingController _textFieldController = TextEditingController();
 
-  // --- 2. ゲッターを正しく閉じる ---
+  // 【復活】フィルタリングされたタスクを取得するゲッター
   List<Task> get _filteredTasks {
-    if (_selectedFilter == null) {
-      return _tasks;
-    }
+    if (_selectedFilter == null) return _tasks;
     return _tasks.where((task) => task.priority == _selectedFilter).toList();
   }
 
@@ -30,21 +27,12 @@ class _TodoListPageState extends State<TodoListPage> {
     _loadTasks();
   }
 
-  // --- データの読み込み・保存・追加 ---
   Future<void> _loadTasks() async {
     final prefs = await SharedPreferences.getInstance();
     final List<String>? taskStringList = prefs.getStringList('tasks');
-    
     if (taskStringList != null) {
       setState(() {
         _tasks = taskStringList.map((item) => Task.fromJson(item)).toList();
-      });
-    } else {
-      setState(() {
-        _tasks = [
-          Task(id: '1', title: 'ブログ記事を書く', dueDate: DateTime.now()),
-          Task(id: '2', title: 'Flutterの勉強', dueDate: DateTime.now()),
-        ];
       });
     }
   }
@@ -55,7 +43,7 @@ class _TodoListPageState extends State<TodoListPage> {
     await prefs.setStringList('tasks', taskStringList);
   }
 
-  void _addTask(DateTime dueDate, TaskPriority priority) {
+  void _addTask(DateTime dueDate, TaskPriority priority, int colorValue) {
     if (_textFieldController.text.isNotEmpty) {
       setState(() {
         final newTask = Task(
@@ -63,6 +51,7 @@ class _TodoListPageState extends State<TodoListPage> {
           title: _textFieldController.text,
           dueDate: dueDate,
           priority: priority,
+          colorValue: colorValue,
         );
         _tasks.add(newTask);
       });
@@ -71,19 +60,19 @@ class _TodoListPageState extends State<TodoListPage> {
       Navigator.pop(context);
     }
   }
+
   Color _getPriorityColor(TaskPriority priority) {
     switch (priority) {
-      case TaskPriority.high:
-        return Colors.redAccent;
-      case TaskPriority.medium:
-        return Colors.orangeAccent;
-      case TaskPriority.low:
-        return Colors.blueAccent;
+      case TaskPriority.high: return Colors.redAccent;
+      case TaskPriority.medium: return Colors.orangeAccent;
+      case TaskPriority.low: return Colors.blueAccent;
     }
   }
+
   void _showAddTaskDialog() {
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
     TaskPriority selectedPriority = TaskPriority.medium;
+    int selectedColor = Task.stickyNoteColors[0];
 
     showDialog(
       context: context,
@@ -102,6 +91,28 @@ class _TodoListPageState extends State<TodoListPage> {
                       decoration: const InputDecoration(labelText: "タスク名"),
                     ),
                     const SizedBox(height: 20),
+                    // ▼ 色選択UI
+                    const Align(alignment: Alignment.centerLeft, child: Text("付箋の色", style: TextStyle(fontSize: 12, color: Colors.grey))),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: Task.stickyNoteColors.map((colorInt) {
+                        return GestureDetector(
+                          onTap: () => setDialogState(() => selectedColor = colorInt),
+                          child: Container(
+                            width: 30, height: 30,
+                            decoration: BoxDecoration(
+                              color: Color(colorInt),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: selectedColor == colorInt ? Colors.black : Colors.transparent, width: 2),
+                            ),
+                            child: selectedColor == colorInt ? const Icon(Icons.check, size: 16) : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    // 【復活】期限選択
                     ListTile(
                       title: const Text("期限"),
                       subtitle: Text("${selectedDate.year}/${selectedDate.month}/${selectedDate.day}"),
@@ -113,44 +124,24 @@ class _TodoListPageState extends State<TodoListPage> {
                           firstDate: DateTime.now(),
                           lastDate: DateTime.now().add(const Duration(days: 365)),
                         );
-                        if (picked != null) {
-                          setDialogState(() => selectedDate = picked);
-                        }
+                        if (picked != null) setDialogState(() => selectedDate = picked);
                       },
                     ),
+                    // 【復活】優先度選択
                     ListTile(
                       title: const Text("優先度"),
                       trailing: DropdownButton<TaskPriority>(
                         value: selectedPriority,
-                        items: TaskPriority.values.map((priority) {
-                          return DropdownMenuItem(
-                            value: priority,
-                            child: Text(priority == TaskPriority.high ? "高" : 
-                                        priority == TaskPriority.medium ? "中" : "低"),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setDialogState(() => selectedPriority = value);
-                          }
-                        },
+                        items: TaskPriority.values.map((p) => DropdownMenuItem(value: p, child: Text(p == TaskPriority.high ? "高" : p == TaskPriority.medium ? "中" : "低"))).toList(),
+                        onChanged: (value) { if (value != null) setDialogState(() => selectedPriority = value); },
                       ),
                     ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () {
-                    _textFieldController.clear();
-                    Navigator.pop(context);
-                  },
-                  child: const Text('キャンセル'),
-                ),
-                ElevatedButton(
-                  onPressed: () => _addTask(selectedDate, selectedPriority),
-                  child: const Text('追加'),
-                ),
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
+                ElevatedButton(onPressed: () => _addTask(selectedDate, selectedPriority, selectedColor), child: const Text('追加')),
               ],
             );
           },
@@ -159,29 +150,15 @@ class _TodoListPageState extends State<TodoListPage> {
     );
   }
 
-  // --- 3. 削除処理をしっかりメソッドの中に含める ---
   void _navigateToShredder(Task task) async {
     await Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => 
-            ShredderPage(task: task), 
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
+        pageBuilder: (context, animation, secondaryAnimation) => ShredderPage(task: task),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) => FadeTransition(opacity: animation, child: child),
       ),
     );
-
-    // 画面から戻ってきたらここで削除
-    setState(() {
-      _tasks.removeWhere((t) => t.id == task.id);
-    });
+    setState(() { _tasks.removeWhere((t) => t.id == task.id); });
     _saveTasks();
-  }
-
-  @override
-  void dispose() {
-    _textFieldController.dispose();
-    super.dispose();
   }
 
   @override
@@ -190,16 +167,12 @@ class _TodoListPageState extends State<TodoListPage> {
       appBar: AppBar(
         title: const Text('シュレッダー ToDo'),
         actions: [
+          // 【復活】フィルタボタン
           PopupMenuButton<TaskPriority?>(
             icon: const Icon(Icons.filter_list),
-            onSelected: (TaskPriority? priority) {
-              setState(() {
-                _selectedFilter = priority;
-              });
-            },
+            onSelected: (priority) => setState(() => _selectedFilter = priority),
             itemBuilder: (context) => [
               const PopupMenuItem(value: null, child: Text("すべて表示")),
-              const PopupMenuDivider(),
               const PopupMenuItem(value: TaskPriority.high, child: Text("優先度：高")),
               const PopupMenuItem(value: TaskPriority.medium, child: Text("優先度：中")),
               const PopupMenuItem(value: TaskPriority.low, child: Text("優先度：低")),
@@ -207,86 +180,94 @@ class _TodoListPageState extends State<TodoListPage> {
           ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: _filteredTasks.length,
-        itemBuilder: (context, index) {
-          final task = _filteredTasks[index];
-          final color = _getPriorityColor(task.priority);
+      body: Column(
+        children: [
+          // 【復活】水平カレンダー
+          Container(
+            height: 100,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: 7,
+              itemBuilder: (context, index) {
+                final date = DateTime.now().add(Duration(days: index));
+                return Container(
+                  width: 60,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: index == 0 ? Colors.cyan[100] : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(15),
+                    border: index == 0 ? Border.all(color: Colors.cyan, width: 2) : null,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(['日', '月', '火', '水', '木', '金', '土'][date.weekday % 7], style: const TextStyle(fontSize: 12)),
+                      Text('${date.day}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          // タスクリスト（付箋デザイン）
+          Expanded(
+            child: ListView.builder(
+              itemCount: _filteredTasks.length,
+              itemBuilder: (context, index) {
+                final task = _filteredTasks[index];
+                final priorityColor = _getPriorityColor(task.priority);
+                final bool isOverdue = task.dueDate.isBefore(DateTime.now());
 
-          // --- 期限の判定ロジック ---
-          final now = DateTime.now();
-          final today = DateTime(now.year, now.month, now.day);
-          final taskDate = DateTime(task.dueDate.year, task.dueDate.month, task.dueDate.day);
-
-          // 期限が今日より前か？（期限切れ）
-          final bool isOverdue = taskDate.isBefore(today);
-          // 期限が今日か？
-          final bool isToday = taskDate.isAtSameMomentAs(today);
-
-          // 文字の色と太さを決定
-          TextStyle dateTextStyle = TextStyle(
-            fontSize: 12,
-            fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
-            color: isOverdue 
-                ? Colors.red          // 期限切れは「赤」
-                : (isToday ? Colors.orange : Colors.grey[600]), // 今日は「オレンジ」、未来は「グレー」
-          );
-
-          return Hero(
-            tag: 'task_${task.id}',
-            child: Card(
-              // 期限切れの場合は、カード自体の背景を少し赤らめる演出も可能です
-              color: isOverdue ? Colors.red[50] : Colors.white,
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              clipBehavior: Clip.antiAlias,
-              child: IntrinsicHeight(
-                child: Row(
-                  children: [
-                    Container(width: 6, color: color),
-                    Expanded(
-                      child: ListTile(
-                        title: Text(
-                          task.title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            // 期限切れならタイトルも少し目立たせる
-                            color: isOverdue ? Colors.red[900] : Colors.black,
+                return Hero(
+                  tag: 'task_${task.id}',
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () => _navigateToShredder(task),
+                      child: Container(
+                        width: MediaQuery.of(context).size.width * 0.85,
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Color(task.colorValue),
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(4, 4))],
+                        ),
+                        child: IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Container(width: 4, color: priorityColor.withOpacity(0.5)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(task.title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isOverdue ? Colors.red[900] : Colors.black87)),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.event, size: 14, color: Colors.black54),
+                                        const SizedBox(width: 4),
+                                        Text('${task.dueDate.year}/${task.dueDate.month}/${task.dueDate.day}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.push_pin, size: 20, color: Colors.black26),
+                            ],
                           ),
                         ),
-                        subtitle: Row(
-                          children: [
-                            Icon(
-                              isOverdue ? Icons.warning : Icons.event, 
-                              size: 14, 
-                              color: dateTextStyle.color
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${task.dueDate.year}/${task.dueDate.month}/${task.dueDate.day}',
-                              style: dateTextStyle, // ここで判定したスタイルを適用
-                            ),
-                            if (isOverdue) // 期限切れなら警告ラベルを表示
-                              const Padding(
-                                padding: EdgeInsets.only(left: 8.0),
-                                child: Text('期限切れ！', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
-                              ),
-                          ],
-                        ),
-                        trailing: Icon(Icons.check_circle_outline, color: color),
-                        onTap: () => _navigateToShredder(task),
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddTaskDialog,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: FloatingActionButton(onPressed: _showAddTaskDialog, child: const Icon(Icons.add)),
     );
   }
 }

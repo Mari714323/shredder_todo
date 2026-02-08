@@ -1,13 +1,14 @@
-// --- シュレッダー画面 ---
+// lib/pages/shredder_page.dart
+
 import 'dart:math' as math;
+import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../models/task.dart';
-import 'package:flutter/material.dart';
-import 'package:to_do/models/particle.dart';
-import 'package:to_do/widgets/shredder_painter.dart';
+import '../models/particle.dart';
+import '../widgets/shredder_painter.dart';
 
 class ShredderPage extends StatefulWidget {
-  final Task task; //StringではなくTask型に変更
+  final Task task;
   const ShredderPage({super.key, required this.task});
 
   @override
@@ -17,7 +18,7 @@ class ShredderPage extends StatefulWidget {
 class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMixin {
   late AnimationController _controller;
   late AnimationController _particleController;
-  final AudioPlayer _audioPlayer = AudioPlayer(); // ここでプレイヤーを定義
+  final AudioPlayer _audioPlayer = AudioPlayer();
   final List<Particle> _particles = [];
   final math.Random _random = math.Random();
   bool _isShredding = false;
@@ -27,21 +28,21 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2500),
+      duration: const Duration(milliseconds: 3000),
     );
 
     _particleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     )..addListener(() {
-      if (_isShredding) {
-        _updateParticles();
-      }
+      if (_isShredding) { _updateParticles(); }
     });
 
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        Navigator.of(context).pop();
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) Navigator.of(context).pop();
+        });
       }
     });
   }
@@ -49,130 +50,187 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
   void _updateParticles() {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
+    final double floorY = screenHeight / 2 + 120;
 
     setState(() {
-      if (_controller.value > 0.1 && _controller.value < 0.9) {
-        for (int i = 0; i < 3; i++) {
+      if (_controller.value > 0.3 && _controller.value < 0.9) {
+        for (int i = 0; i < 2; i++) {
           _particles.add(Particle(
-            x: screenWidth / 2 + (_random.nextDouble() * 180 - 90),
-            y: screenHeight - 150,
-            vx: _random.nextDouble() * 4 - 2,
-            vy: _random.nextDouble() * 2 + 1,
-            angle: _random.nextDouble() * math.pi,
-            va: _random.nextDouble() * 0.2,
+            x: screenWidth / 2 + (_random.nextDouble() * 160 - 80),
+            y: screenHeight / 2 - 20, // 穴の位置
+            vx: _random.nextDouble() * 1.5 - 0.75,
+            vy: _random.nextDouble() * 2 + 2,
+            angle: _random.nextDouble() * 0.1,
+            va: _random.nextDouble() * 0.05,
           ));
         }
       }
-      for (var p in _particles) { p.update(); }
-      _particles.removeWhere((p) => p.y > screenHeight);
+      for (var p in _particles) { p.update(floorY); } //
     });
+  }
+
+  void _startShredding() async {
+    setState(() => _isShredding = true);
+    try {
+      await _audioPlayer.play(AssetSource('sounds/shredder.mp3'));
+    } catch (e) {
+      debugPrint("Sound error: $e");
+    }
+    _controller.forward();
+    _particleController.repeat();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _particleController.dispose();
-    _audioPlayer.dispose(); // 忘れずに破棄
+    _audioPlayer.dispose();
     super.dispose();
-  }
-
-  // ここに音の再生とアニメーション開始をまとめる
-  void _startShredding() async {
-    setState(() => _isShredding = true);
-    
-    // 音を鳴らす（ファイルがない場合はエラーを無視して進む）
-    try {
-      await _audioPlayer.play(AssetSource('sounds/shredder.mp3'));
-    } catch (e) {
-      debugPrint("Sound file not found, skipping: $e");
-    }
-
-    _controller.forward();
-    _particleController.repeat();
   }
 
   @override
   Widget build(BuildContext context) {
+    final Color noteColor = Color(widget.task.colorValue);
+
     return Scaffold(
-      backgroundColor: Colors.black.withValues(alpha: 0.8),
+      backgroundColor: const Color(0xFFE0E5EC),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.black54),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: Stack(
         children: [
-          // 1. 紙（奥）
+          // 1. 【奥】シュレッダーの内部
           Center(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) {
-                double slideDown = _controller.value * 600;
-                return Transform.translate(offset: Offset(0, slideDown), child: child);
-              },
-              child: Hero(
-                tag: 'task_${widget.task.id}',
-                child: Material(
-                  elevation: 10,
+            child: Container(
+              width: 300, height: 260,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2D2D2D),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+
+          // 2. 【中間】流れてくる付箋
+          // ▼▼▼ ClipRect で囲んで、下側を切り取るように修正 ▼▼▼
+          ClipRect(
+            clipper: _PaperSlotClipper(), 
+            child: Center(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  double slide = -280 + (_controller.value * 500);
+                  return Transform.translate(
+                    offset: Offset(0, slide),
+                    child: child,
+                  );
+                },
+                child: Hero(
+                  tag: 'task_${widget.task.id}',
                   child: Container(
-                    width: 300, height: 400, color: Colors.white,
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      widget.task.title, // widget.task.title を表示
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black)
+                    width: 200, height: 200,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: noteColor,
+                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
                     ),
+                    child: Text(widget.task.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ),
             ),
           ),
-          // 2. 箱と壁（真ん中）
+          // ▲▲▲ 追加ここまで ▲▲▲
+
+          // 3. 【前面】レトロ・ガジェット風パネル
           Align(
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!_isShredding)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 60),
-                    child: ElevatedButton.icon(
-                      onPressed: _startShredding,
-                      icon: const Icon(Icons.delete_forever),
-                      label: const Text('！完了！'),
+            alignment: Alignment.center,
+            child: Container(
+              width: 340, height: 280,
+              margin: const EdgeInsets.only(top: 100),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0EAD6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFDCD6BC), width: 4),
+                boxShadow: [
+                  const BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 10)),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 280, height: 12,
+                    margin: const EdgeInsets.symmetric(vertical: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                   ),
-                Container(
-                  width: double.infinity, height: 180,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.grey[800]!, // 上は少し明るく
-                        Colors.grey[900]!, // 下は暗く
-                      ],
+                  Container(
+                    width: 200, height: 60,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF9EA78D),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.black26, width: 2),
                     ),
-                    border: const Border(
-                      top: BorderSide(color: Colors.black, width: 8),
+                    alignment: Alignment.center,
+                    child: Text(
+                      _isShredding ? "SHREDDING..." : "READY 3000",
+                      style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 20, color: Color(0xFF2A2E20), letterSpacing: 2),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 10,
-                        offset: const Offset(0, -5), // 上方向に影を出して立体感を出す
-                      ),
-                    ],
                   ),
-                  child: const Icon(Icons.waves, color: Colors.white10, size: 80),
-                ),
-                Container(width: double.infinity, height: 200, color: Colors.black),
-              ],
+                  const Spacer(),
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text("DATA DESTROYER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  ),
+                ],
+              ),
             ),
           ),
-          // 3. 紙くず（手前）
+
+          // 4. 【最前面】紙くず（溜まっていく）
           IgnorePointer(
             child: CustomPaint(
-              painter: ShreddedPaperPainter(_particles),
+              painter: ShreddedPaperPainter(_particles, noteColor), 
               size: Size.infinite,
             ),
           ),
+
+          if (!_isShredding)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 80),
+                child: ElevatedButton(
+                  onPressed: _startShredding,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFB300),
+                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                  ),
+                  child: const Text("EXECUTE", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
+}
+
+// ▼▼▼ 紙が穴の下に見えないように切り取るためのクリッパーを追加 ▼▼▼
+class _PaperSlotClipper extends CustomClipper<Rect> {
+  @override
+  Rect getClip(Size size) {
+    // 画面中央より少し上（スロットの位置）までを表示領域とし、それより下は描画しない
+    // 座標計算に基づき、size.height / 2 - 20 の位置を境界にします
+    return Rect.fromLTWH(0, 0, size.width, size.height / 2 - 20);
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Rect> oldClipper) => false;
 }
