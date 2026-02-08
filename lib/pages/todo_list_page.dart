@@ -231,11 +231,13 @@ class _TodoListPageState extends State<TodoListPage> {
                         decoration: BoxDecoration(
                           color: Color(task.colorValue),
                           borderRadius: BorderRadius.circular(4),
+                          // ignore: deprecated_member_use
                           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(4, 4))],
                         ),
                         child: IntrinsicHeight(
                           child: Row(
                             children: [
+                              // ignore: deprecated_member_use
                               Container(width: 4, color: priorityColor.withOpacity(0.5)),
                               const SizedBox(width: 12),
                               Expanded(
@@ -246,7 +248,7 @@ class _TodoListPageState extends State<TodoListPage> {
                                     const SizedBox(height: 8),
                                     Row(
                                       children: [
-                                        Icon(Icons.event, size: 14, color: Colors.black54),
+                                        const Icon(Icons.event, size: 14, color: Colors.black54),
                                         const SizedBox(width: 4),
                                         Text('${task.dueDate.year}/${task.dueDate.month}/${task.dueDate.day}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
                                       ],
