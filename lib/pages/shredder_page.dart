@@ -1,5 +1,3 @@
-// lib/pages/shredder_page.dart
-
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -50,22 +48,34 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
   void _updateParticles() {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-    final double floorY = screenHeight / 2 + 120;
+    
+    // 投入口（黒いスリット）の高さに合わせる (中央より約65px上)
+    final double intakeY = screenHeight / 2 - 65; 
+    final double baseFloorY = screenHeight / 2 + 130;
+    const double mountainHeight = 40.0;
+    const double mountainWidth = 120.0;
 
     setState(() {
       if (_controller.value > 0.3 && _controller.value < 0.9) {
         for (int i = 0; i < 2; i++) {
+          double posX = screenWidth / 2 + (_random.nextDouble() * 160 - 80);
+          double distanceFromCenter = (posX - screenWidth / 2).abs();
+          double offset = mountainHeight * math.exp(-(math.pow(distanceFromCenter, 2)) / (2 * math.pow(mountainWidth / 2, 2)));
+          double individualTargetY = baseFloorY - offset;
+          individualTargetY += (_random.nextDouble() * 10 - 5);
+
           _particles.add(Particle(
-            x: screenWidth / 2 + (_random.nextDouble() * 160 - 80),
-            y: screenHeight / 2 - 20, // 穴の位置
+            x: posX,
+            y: intakeY, // 【修正】投入口から生成されるように変更
             vx: _random.nextDouble() * 1.5 - 0.75,
             vy: _random.nextDouble() * 2 + 2,
             angle: _random.nextDouble() * 0.1,
             va: _random.nextDouble() * 0.05,
+            targetY: individualTargetY,
           ));
         }
       }
-      for (var p in _particles) { p.update(floorY); } //
+      for (var p in _particles) { p.update(); }
     });
   }
 
@@ -104,7 +114,7 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
       ),
       body: Stack(
         children: [
-          // 1. 【奥】シュレッダーの内部
+          // 1. 【奥】シュレッダー内部
           Center(
             child: Container(
               width: 300, height: 260,
@@ -116,14 +126,14 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
           ),
 
           // 2. 【中間】流れてくる付箋
-          // ▼▼▼ ClipRect で囲んで、下側を切り取るように修正 ▼▼▼
           ClipRect(
             clipper: _PaperSlotClipper(), 
             child: Center(
               child: AnimatedBuilder(
                 animation: _controller,
                 builder: (context, child) {
-                  double slide = -280 + (_controller.value * 500);
+                  // 【修正】開始位置(-200)を調整して上部が切れないように
+                  double slide = -200 + (_controller.value * 450);
                   return Transform.translate(
                     offset: Offset(0, slide),
                     child: child,
@@ -136,7 +146,7 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: noteColor,
-                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                     ),
                     child: Text(widget.task.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
@@ -144,32 +154,33 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
               ),
             ),
           ),
-          // ▲▲▲ 追加ここまで ▲▲▲
 
-          // 3. 【前面】レトロ・ガジェット風パネル
+          // 3. 【前面】シュレッダー本体（レトロ・ガジェット）
           Align(
             alignment: Alignment.center,
             child: Container(
-              width: 340, height: 280,
-              margin: const EdgeInsets.only(top: 100),
+              width: 340, height: 300,
+              margin: const EdgeInsets.only(top: 80), // 【修正】本体位置を少し上げ
               decoration: BoxDecoration(
                 color: const Color(0xFFF0EAD6),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFDCD6BC), width: 4),
-                boxShadow: [
-                  const BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 10)),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 10)),
                 ],
               ),
               child: Column(
                 children: [
+                  // 投入口（黒いスリット）
                   Container(
                     width: 280, height: 12,
-                    margin: const EdgeInsets.symmetric(vertical: 20),
+                    margin: const EdgeInsets.symmetric(vertical: 25), // 位置の微調整
                     decoration: BoxDecoration(
                       color: Colors.black,
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
+                  // デジタル表示
                   Container(
                     width: 200, height: 60,
                     decoration: BoxDecoration(
@@ -201,16 +212,18 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
             ),
           ),
 
+          // 5. 操作ボタン
           if (!_isShredding)
             Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
-                padding: const EdgeInsets.only(bottom: 80),
+                padding: const EdgeInsets.only(bottom: 50), // 【修正】余白を広めに
                 child: ElevatedButton(
                   onPressed: _startShredding,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFB300),
                     padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                   ),
                   child: const Text("EXECUTE", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
                 ),
@@ -222,15 +235,12 @@ class _ShredderPageState extends State<ShredderPage> with TickerProviderStateMix
   }
 }
 
-// ▼▼▼ 紙が穴の下に見えないように切り取るためのクリッパーを追加 ▼▼▼
 class _PaperSlotClipper extends CustomClipper<Rect> {
   @override
   Rect getClip(Size size) {
-    // 画面中央より少し上（スロットの位置）までを表示領域とし、それより下は描画しない
-    // 座標計算に基づき、size.height / 2 - 20 の位置を境界にします
-    return Rect.fromLTWH(0, 0, size.width, size.height / 2 - 20);
+    // 【修正】クリップ位置を投入口スリットの位置(中央より約65px上)に合わせる
+    return Rect.fromLTWH(0, 0, size.width, size.height / 2 - 65);
   }
-
   @override
   bool shouldReclip(CustomClipper<Rect> oldClipper) => false;
 }
